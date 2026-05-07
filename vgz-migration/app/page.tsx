@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useState, useCallback } from 'react'
 import styles from './page.module.css'
 
 const NAV_TREE = [
@@ -42,12 +42,26 @@ const THEMES = ['Bewegen', 'Voeding', 'Mentale gezondheid']
 const TYPES = ['Artikel', 'Service', 'Thema']
 
 type NavItem = { id: string; label: string; url: string; type: string }
-type FetchedData = { pageTitle: string; metaDescription: string; ogTitle: string; fetchedUrl: string; incomplete: boolean }
+type FetchedData = { pageTitle: string; metaDescription: string; ogTitle: string; body: string; fetchedUrl: string; incomplete: boolean; source: string }
 type Analysis = { contentType: string; titel: string; slug: string; thema: string; samenvatting: string; notitie: string }
 type Decision = 'migreren' | 'later' | 'niet-migreren' | null
 
+function guessType(url: string): string {
+  const path = url.replace('https://www.vgz.nl', '')
+  if (path.split('/').filter(Boolean).length <= 2) return 'Thema'
+  if (['coach', 'gesprek', 'therapieland', 'olga'].some(k => path.includes(k))) return 'Service'
+  return 'Artikel'
+}
+
+function scPath(url: string): string {
+  const path = url.replace('https://www.vgz.nl', '').replace('/gezond-leven', '/Gezond Leven')
+  return '/sitecore/content/VGZ' + path
+}
+
 export default function Page() {
   const [currentId, setCurrentId] = useState<string | null>(null)
+  const [customItem, setCustomItem] = useState<NavItem | null>(null)
+  const [urlInput, setUrlInput] = useState('https://www.vgz.nl/gezond-leven/bewegen')
   const [openFolders, setOpenFolders] = useState<Record<string, boolean>>({ bewegen: true, voeding: false, mentaal: false })
   const [fetched, setFetched] = useState<Record<string, FetchedData>>({})
   const [fetching, setFetching] = useState<Record<string, boolean>>({})
@@ -57,29 +71,43 @@ export default function Page() {
   const [showSkipModal, setShowSkipModal] = useState(false)
   const [skipReason, setSkipReason] = useState('')
 
-  const current = ALL_ITEMS.find(i => i.id === currentId) ?? null
+  const allItems = [...ALL_ITEMS, ...(customItem ? [customItem] : [])]
+  const current = allItems.find(i => i.id === currentId) ?? null
   const currentFetch = currentId ? fetched[currentId] ?? null : null
   const currentAnalysis = currentId ? analyses[currentId] ?? null : null
   const currentDecision = currentId ? decisions[currentId] ?? null : null
 
-  const fetchItem = useCallback(async (item: NavItem) => {
+  const doFetch = useCallback(async (item: NavItem) => {
     setFetching(prev => ({ ...prev, [item.id]: true }))
+    const fullUrl = item.url.startsWith('http') ? item.url : 'https://www.vgz.nl' + item.url
     try {
       const r = await fetch('/api/scrape', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: 'https://www.vgz.nl' + item.url }),
+        body: JSON.stringify({ url: fullUrl }),
       })
       const data = await r.json()
       setFetched(prev => ({ ...prev, [item.id]: data }))
     } catch {
       setFetched(prev => ({
         ...prev,
-        [item.id]: { pageTitle: item.label, metaDescription: '', ogTitle: '', fetchedUrl: 'https://www.vgz.nl' + item.url, incomplete: true }
+        [item.id]: { pageTitle: item.label, metaDescription: '', ogTitle: '', body: '', fetchedUrl: fullUrl, incomplete: true, source: 'failed' }
       }))
     }
     setFetching(prev => ({ ...prev, [item.id]: false }))
   }, [])
+
+  const fetchFromUrl = useCallback(async () => {
+    const url = urlInput.trim()
+    if (!url) return
+    const path = url.replace('https://www.vgz.nl', '')
+    const slug = path.split('/').pop() || 'custom'
+    const id = 'custom-' + slug
+    const item: NavItem = { id, label: slug, url: path, type: guessType(url) }
+    setCustomItem(item)
+    setCurrentId(id)
+    await doFetch(item)
+  }, [urlInput, doFetch])
 
   const runAI = useCallback(async () => {
     if (!current) return
@@ -99,12 +127,9 @@ export default function Page() {
       setAnalyses(prev => ({
         ...prev,
         [current.id]: {
-          contentType: current.type,
-          titel: data?.pageTitle || current.label,
-          slug,
-          thema,
-          samenvatting: data?.metaDescription || '',
-          notitie: data?.incomplete ? 'Body content niet beschikbaar — vereist Sitecore-export.' : '',
+          contentType: current.type, titel: data?.pageTitle || current.label,
+          slug, thema, samenvatting: data?.metaDescription || '',
+          notitie: data?.incomplete ? 'Body niet beschikbaar — vereist Sitecore-export.' : 'Velden ingevuld o.b.v. metadata.',
         }
       }))
     }
@@ -116,26 +141,25 @@ export default function Page() {
     if (d === 'niet-migreren') { setShowSkipModal(true); return }
     setDecisions(prev => ({ ...prev, [currentId]: d }))
     if (d === 'migreren') {
-      const idx = ALL_ITEMS.findIndex(i => i.id === currentId)
-      if (idx < ALL_ITEMS.length - 1) setCurrentId(ALL_ITEMS[idx + 1].id)
+      const idx = allItems.findIndex(i => i.id === currentId)
+      if (idx < allItems.length - 1) setCurrentId(allItems[idx + 1].id)
     }
   }
 
   const confirmSkip = () => {
     if (!currentId) return
     setDecisions(prev => ({ ...prev, [currentId]: 'niet-migreren' }))
-    setShowSkipModal(false)
-    setSkipReason('')
-    const idx = ALL_ITEMS.findIndex(i => i.id === currentId)
-    if (idx < ALL_ITEMS.length - 1) setCurrentId(ALL_ITEMS[idx + 1].id)
+    setShowSkipModal(false); setSkipReason('')
+    const idx = allItems.findIndex(i => i.id === currentId)
+    if (idx < allItems.length - 1) setCurrentId(allItems[idx + 1].id)
   }
 
   const counts = {
-    total: ALL_ITEMS.length,
+    total: allItems.length,
+    fetched: Object.keys(fetched).length,
     migreren: Object.values(decisions).filter(d => d === 'migreren').length,
     later: Object.values(decisions).filter(d => d === 'later').length,
     niet: Object.values(decisions).filter(d => d === 'niet-migreren').length,
-    fetched: Object.keys(fetched).length,
   }
 
   const typeIcon = (t: string) => t === 'Thema' ? '📋' : t === 'Service' ? '🔧' : '📄'
@@ -145,23 +169,34 @@ export default function Page() {
 
   return (
     <div className={styles.app}>
+
       {/* TOP BAR */}
       <div className={styles.topbar}>
         <div className={styles.topLeft}>
           <span className={styles.scLogo}>SC</span>
           <span className={styles.topLabel}>VGZ Gezond Leven — migratie werkruimte</span>
         </div>
+        <div className={styles.urlBar}>
+          <input
+            className={styles.urlInput}
+            value={urlInput}
+            onChange={e => setUrlInput(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && fetchFromUrl()}
+            placeholder="https://www.vgz.nl/gezond-leven/..."
+          />
+          <button className={styles.urlBtn} onClick={fetchFromUrl}>⬇ Ophalen</button>
+        </div>
         <div className={styles.topStats}>
-          <span className={styles.stat}><strong>{counts.total}</strong> items</span>
-          <span className={styles.stat}><strong>{counts.fetched}</strong> opgehaald</span>
+          <span className={styles.stat}><strong>{counts.fetched}/{counts.total}</strong> opgehaald</span>
           <span className={`${styles.stat} ${styles.statGreen}`}><strong>{counts.migreren}</strong> migreren</span>
           <span className={`${styles.stat} ${styles.statYellow}`}><strong>{counts.later}</strong> later</span>
-          <span className={`${styles.stat} ${styles.statRed}`}><strong>{counts.niet}</strong> niet migreren</span>
+          <span className={`${styles.stat} ${styles.statRed}`}><strong>{counts.niet}</strong> niet</span>
         </div>
       </div>
 
       <div className={styles.workspace}>
-        {/* LEFT: tree */}
+
+        {/* LEFT: Sitecore tree */}
         <div className={styles.scPanel}>
           <div className={styles.scPanelHeader}>
             <span className={styles.scSource}>SITECORE</span>
@@ -186,7 +221,7 @@ export default function Page() {
                         return (
                           <div key={item.id}
                             className={`${styles.treeItem} ${currentId === item.id ? styles.active : ''}`}
-                            onClick={() => setCurrentId(item.id)}
+                            onClick={() => { setCurrentId(item.id); if (!fetched[item.id]) doFetch(item) }}
                           >
                             <span className={`${styles.itemDot} ${dec === 'migreren' ? styles.dotGreen : dec === 'niet-migreren' ? styles.dotRed : dec === 'later' ? styles.dotYellow : isFetched ? styles.dotBlue : ''}`} />
                             <span>{typeIcon(item.type)}</span>
@@ -199,25 +234,42 @@ export default function Page() {
                 </div>
               )
             })}
+            {customItem && (
+              <div className={styles.treeSection}>
+                <div className={styles.treeFolder} style={{ color: '#fbbf24' }}>
+                  <span>📁</span><span>Handmatig opgehaald</span>
+                </div>
+                <div className={styles.treeChildren}>
+                  <div
+                    className={`${styles.treeItem} ${currentId === customItem.id ? styles.active : ''}`}
+                    onClick={() => setCurrentId(customItem.id)}
+                  >
+                    <span className={`${styles.itemDot} ${fetched[customItem.id] ? styles.dotBlue : ''}`} />
+                    <span>{typeIcon(customItem.type)}</span>
+                    <span className={styles.itemName}>{customItem.label}</span>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
         {/* MIDDLE: Sitecore view */}
         <div className={styles.midPanel}>
           {!current ? (
-            <div className={styles.emptyState}>← Selecteer een item in de tree</div>
+            <div className={styles.emptyState}>← Selecteer een item of voer een URL in</div>
           ) : (
             <>
               <div className={styles.panelHeader}>
                 <span className={styles.scSource}>SITECORE</span>
-                <span className={styles.panelPath}>{'/sitecore/content/VGZ' + current.url.replace('/gezond-leven', '/Gezond Leven')}</span>
-                <button className={styles.fetchBtn} disabled={!!fetching[current.id]} onClick={() => fetchItem(current)}>
+                <span className={styles.panelPath}>{scPath(current.url.startsWith('http') ? current.url : 'https://www.vgz.nl' + current.url)}</span>
+                <button className={styles.fetchBtn} disabled={!!fetching[current.id]} onClick={() => doFetch(current)}>
                   {fetching[current.id] ? 'ophalen...' : fetched[current.id] ? '↻ opnieuw' : '⬇ ophalen'}
                 </button>
               </div>
               <div className={styles.panelBody}>
                 {!currentFetch ? (
-                  <div className={styles.hintBox}>Klik "⬇ ophalen" om metadata van deze pagina op te halen via HTTP</div>
+                  <div className={styles.hintBox}>Klik "⬇ ophalen" om de pagina op te halen</div>
                 ) : (
                   <>
                     <div className={styles.scField}>
@@ -234,30 +286,28 @@ export default function Page() {
                         <div className={styles.scFieldValue}>{currentFetch.metaDescription}</div>
                       </div>
                     )}
-                    {currentFetch.ogTitle && (
-                      <div className={styles.scField}>
-                        <div className={styles.scFieldLabel}>OG Title</div>
-                        <div className={styles.scFieldValue}>{currentFetch.ogTitle}</div>
+                    <div className={styles.scField}>
+                      <div className={styles.scFieldLabel}>
+                        Page Body
+                        {currentFetch.source === 'jina' && <span className={styles.sourceBadge}>via Jina Reader</span>}
+                        {currentFetch.incomplete && <span className={styles.sourceBadgeWarn}>onvolledig</span>}
                       </div>
-                    )}
+                      <div className={`${styles.scFieldValue} ${styles.long}`}>
+                        {currentFetch.body
+                          ? currentFetch.body.substring(0, 1200)
+                          : '⚠ Body niet beschikbaar — vereist Sitecore XML export.'}
+                      </div>
+                    </div>
                     <div className={styles.scField}>
                       <div className={styles.scFieldLabel}>URL</div>
                       <div className={styles.scFieldValue}>
                         <a href={currentFetch.fetchedUrl} target="_blank" rel="noreferrer" style={{ color: '#4a9eff' }}>{currentFetch.fetchedUrl}</a>
                       </div>
                     </div>
-                    <div className={styles.scField}>
-                      <div className={styles.scFieldLabel}>Page Body</div>
-                      <div className={`${styles.scFieldValue} ${styles.long}`}>
-                        {currentFetch.incomplete
-                          ? '⚠ Body content niet beschikbaar via HTTP fetch — vereist Sitecore XML export of directe API toegang.'
-                          : '(geen body content geëxtraheerd)'}
-                      </div>
-                    </div>
                     {currentFetch.incomplete && (
                       <div className={styles.issuesBox}>
                         <div className={styles.issuesTitle}>⚠ Migration issues</div>
-                        <div className={styles.issueLine}>Body content niet extraheerbaar — JS-rendered pagina</div>
+                        <div className={styles.issueLine}>Body content gedeeltelijk — JS-rendered pagina</div>
                         <div className={styles.issueLine}>Media assets onbekend — vereist Sitecore media library export</div>
                       </div>
                     )}
@@ -313,11 +363,8 @@ export default function Page() {
                     {currentAnalysis.notitie}
                   </div>
                 )}
-                {!currentFetch && (
-                  <div className={styles.hintBox}>Haal eerst de pagina op via "⬇ ophalen" voordat je AI mapping uitvoert</div>
-                )}
+                {!currentFetch && <div className={styles.hintBox}>Haal eerst de pagina op voordat je AI mapping uitvoert</div>}
               </div>
-
               <div className={styles.decisionBar}>
                 {currentDecision ? (
                   <div className={styles.currentDecision}>
