@@ -126,11 +126,20 @@ export default function Page() {
   const migrate = useCallback(async () => {
     if (!currentItem || !currentAnalysis) return
     setMigrating(true)
+    // Use form values (user may have edited AI suggestions)
+    const effectiveAnalysis = {
+      ...currentAnalysis,
+      contentType: formValues[`${currentId}:contentType`] || currentAnalysis.contentType,
+      titel: formValues[`${currentId}:titel`] || currentAnalysis.titel,
+      slug: formValues[`${currentId}:slug`] || currentAnalysis.slug,
+      thema: formValues[`${currentId}:thema`] || currentAnalysis.thema,
+      samenvatting: formValues[`${currentId}:samenvatting`] || currentAnalysis.samenvatting,
+    }
     try {
       const r = await fetch('/api/migrate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ item: currentItem, fetchedData: currentFetch, analysis: currentAnalysis }),
+        body: JSON.stringify({ item: currentItem, fetchedData: currentFetch, analysis: effectiveAnalysis }),
       })
       const result = await r.json()
       setMigrateResults(prev => ({ ...prev, [currentItem.id]: result }))
@@ -172,9 +181,26 @@ export default function Page() {
     niet: Object.values(decisions).filter(d => d === 'niet-migreren').length,
   }
 
-  const af = (f: string) => currentAnalysis?.[f as keyof Analysis] ? styles.aiFilled : ''
+  // Form state — synced with AI analysis when it arrives
+  const [formValues, setFormValues] = useState<Record<string, string>>({})
+
+  const fv = (field: string, fallback = '') => {
+    const key = `${currentId}:${field}`
+    if (key in formValues) return formValues[key]
+    return (currentAnalysis?.[field as keyof Analysis] as string) || fallback
+  }
+
+  const setFv = (field: string, value: string) => {
+    setFormValues(prev => ({ ...prev, [`${currentId}:${field}`]: value }))
+  }
+
+  const af = (f: string) => {
+    const key = `${currentId}:${f}`
+    const aiHasValue = !!currentAnalysis?.[f as keyof Analysis]
+    const userEdited = key in formValues
+    return aiHasValue && !userEdited ? styles.aiFilled : ''
+  }
   const at = (f: string) => currentAnalysis?.[f as keyof Analysis] ? <span className={styles.aiTag}>AI</span> : null
-  const v = (f: string, fb = '') => (currentAnalysis?.[f as keyof Analysis] as string) || fb
 
   return (
     <div className={styles.app}>
@@ -337,28 +363,48 @@ export default function Page() {
               <div className={styles.cfBody}>
                 <div className={styles.cfField}>
                   <div className={styles.cfLabel}>Content Type <span className={styles.req}>*</span> {at('contentType')}</div>
-                  <select className={`${styles.cfSelect} ${af('contentType')}`} key={currentId + 'type'} defaultValue={v('contentType', currentItem.type)}>
+                  <select
+                    className={`${styles.cfSelect} ${af('contentType')}`}
+                    value={fv('contentType', currentItem.type)}
+                    onChange={e => setFv('contentType', e.target.value)}
+                  >
                     {TYPES.map(t => <option key={t}>{t}</option>)}
                   </select>
                 </div>
                 <div className={styles.cfField}>
                   <div className={styles.cfLabel}>Title <span className={styles.req}>*</span> {at('titel')}</div>
-                  <input className={`${styles.cfInput} ${af('titel')}`} defaultValue={v('titel', currentFetch?.pageTitle || '')} key={currentId + 'titel'} />
+                  <input
+                    className={`${styles.cfInput} ${af('titel')}`}
+                    value={fv('titel', currentFetch?.pageTitle || '')}
+                    onChange={e => setFv('titel', e.target.value)}
+                  />
                 </div>
                 <div className={styles.cfField}>
                   <div className={styles.cfLabel}>Slug <span className={styles.req}>*</span> {at('slug')}</div>
-                  <input className={`${styles.cfInput} ${af('slug')}`} defaultValue={v('slug', currentItem.url.split('/').pop() || '')} key={currentId + 'slug'} />
+                  <input
+                    className={`${styles.cfInput} ${af('slug')}`}
+                    value={fv('slug', currentItem.url.split('/').pop() || '')}
+                    onChange={e => setFv('slug', e.target.value)}
+                  />
                 </div>
                 <div className={styles.cfField}>
                   <div className={styles.cfLabel}>Thema {at('thema')}</div>
-                  <select className={`${styles.cfSelect} ${af('thema')}`} key={currentId + 'thema'} defaultValue={v('thema')}>
+                  <select
+                    className={`${styles.cfSelect} ${af('thema')}`}
+                    value={fv('thema', '')}
+                    onChange={e => setFv('thema', e.target.value)}
+                  >
                     <option value="">— selecteer —</option>
                     {THEMES.map(t => <option key={t}>{t}</option>)}
                   </select>
                 </div>
                 <div className={styles.cfField}>
                   <div className={styles.cfLabel}>Summary {at('samenvatting')}</div>
-                  <textarea className={`${styles.cfInput} ${styles.textarea} ${af('samenvatting')}`} defaultValue={v('samenvatting', currentFetch?.metaDescription || '')} key={currentId + 'summary'} />
+                  <textarea
+                    className={`${styles.cfInput} ${styles.textarea} ${af('samenvatting')}`}
+                    value={fv('samenvatting', currentFetch?.metaDescription || '')}
+                    onChange={e => setFv('samenvatting', e.target.value)}
+                  />
                 </div>
                 {currentAnalysis?.notitie && (
                   <div className={styles.aiNote}>
