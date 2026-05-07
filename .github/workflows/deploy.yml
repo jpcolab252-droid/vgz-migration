@@ -7,9 +7,6 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: vgz-migration
     steps:
       - uses: actions/checkout@v4
 
@@ -20,9 +17,12 @@ jobs:
 
       - uses: google-github-actions/setup-gcloud@v2
 
-      - run: gcloud builds submit --tag gcr.io/vgz-migration/vgz-migration-review --project vgz-migration
+      - name: Build
+        run: gcloud builds submit --tag gcr.io/vgz-migration/vgz-migration-review --project vgz-migration
+        working-directory: vgz-migration
 
-      - run: |
+      - name: Deploy
+        run: |
           gcloud run deploy vgz-migration-review \
             --image gcr.io/vgz-migration/vgz-migration-review \
             --region europe-west1 \
