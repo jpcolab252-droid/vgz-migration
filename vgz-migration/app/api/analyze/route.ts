@@ -4,39 +4,42 @@ export async function POST(req: NextRequest) {
   const apiKey = process.env.ANTHROPIC_API_KEY
   if (!apiKey) return NextResponse.json({ error: 'API key not configured' }, { status: 500 })
 
-  const body = await req.json()
-  const { item, fetchedData, issues } = body
+  const { item, fetchedData } = await req.json()
 
-  const name = item.fields?.Title || item.fields?.Name || item.label || ''
-  const url = item.fields?.Url || item.url || ''
-  const metaDesc = fetchedData?.metaDescription || item.fields?.Summary || ''
-  const pageTitle = fetchedData?.pageTitle || item.fields?.Title || item.fields?.Name || name
-  const bodyText = (item.fields?.Body || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().substring(0, 400)
-  const issueList = issues || []
+  const pageTitle = fetchedData?.pageTitle || item.label || ''
+  const metaDesc = fetchedData?.metaDescription || ''
+  const body = (fetchedData?.body || '').substring(0, 800)
+  const url = item.url || ''
+  const mediaCount = fetchedData?.mediaItems?.length || 0
 
-  const prompt = `Je helpt een redacteur bij het migreren van VGZ.nl Sitecore-content naar Contentful.
+  const prompt = `Je helpt een redacteur bij het migreren van VGZ.nl content naar Contentful.
 
-Sitecore item:
-- Naam/titel: ${pageTitle}
-- URL pad: ${url}
-- Type: ${item.template || item.type}
+Sitecore pagina:
+- URL: ${url}
+- Paginatitel: ${pageTitle}
 - Meta description: ${metaDesc}
-- Body (indien beschikbaar): ${bodyText || '(niet beschikbaar)'}
-- Technische problemen: ${issueList.length ? issueList.join(', ') : 'geen'}
+- Body (eerste 800 tekens): ${body || '(niet beschikbaar)'}
+- Aantal media-items gevonden: ${mediaCount}
 
-Stel de volgende Contentful velden voor in JSON:
+Stel Contentful veldmapping voor als JSON:
 {
   "contentType": "Artikel" | "Service" | "Thema",
   "titel": "...",
   "slug": "...",
   "thema": "Bewegen" | "Voeding" | "Mentale gezondheid",
-  "samenvatting": "één zin, max 160 tekens, geen HTML",
-  "notitie": "één korte zin voor de redacteur over wat nog aandacht nodig heeft bij deze migratie"
+  "samenvatting": "max 160 tekens, geen HTML, op basis van meta description of eerste alinea",
+  "notitie": "één zin: wat heeft de redacteur nog te doen na de automatische mapping?"
 }
+
+Regels:
+- contentType = Thema als het een overzichtspagina is, Service als het een tool/app/programma betreft, anders Artikel
+- slug = laatste deel van de URL, zonder speciale tekens
+- thema bepaal je op basis van het URL-pad en de inhoud
+- notitie = concreet, bijv. "Body bevat hardcoded telefoonnummer — vervangen door contactcomponent" of "Media nog handmatig toe te voegen (${mediaCount} afbeeldingen gevonden)"
 
 Reageer ALLEEN met de JSON.`
 
-  const response = await fetch('https://api.anthropic.com/v1/messages', {
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -50,22 +53,21 @@ Reageer ALLEEN met de JSON.`
     }),
   })
 
-  const data = await response.json()
+  const data = await res.json()
   const text = data.content?.[0]?.text || '{}'
-  const clean = text.replace(/```json|```/g, '').trim()
 
   try {
-    return NextResponse.json(JSON.parse(clean))
+    return NextResponse.json(JSON.parse(text.replace(/```json|```/g, '').trim()))
   } catch {
     const slug = url.split('/').pop() || ''
     const thema = url.includes('bewegen') ? 'Bewegen' : url.includes('voeding') ? 'Voeding' : 'Mentale gezondheid'
     return NextResponse.json({
-      contentType: item.template || item.type || 'Artikel',
+      contentType: item.type || 'Artikel',
       titel: pageTitle,
       slug,
       thema,
       samenvatting: metaDesc.substring(0, 160),
-      notitie: issueList.length ? `Let op: ${issueList[0]}` : 'Velden ingevuld op basis van beschikbare metadata.',
+      notitie: mediaCount > 0 ? `${mediaCount} media-items gevonden — handmatig toe te voegen.` : 'Velden ingevuld o.b.v. beschikbare metadata.',
     })
   }
 }
