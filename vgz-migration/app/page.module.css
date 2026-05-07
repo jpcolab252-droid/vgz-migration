@@ -107,3 +107,14 @@
 .emptyState { flex: 1; display: flex; align-items: center; justify-content: center; color: #6b7280; font-size: 12px; text-align: center; padding: 20px; line-height: 1.8; }
 .thinking { color: #4a9eff; animation: pulse 1s infinite; }
 @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+
+/* URL BAR */
+.urlBar { display: flex; gap: 6px; flex: 1; max-width: 420px; margin: 0 16px; }
+.urlInput { flex: 1; background: #161b27; border: 1px solid #2d3748; border-radius: 5px; padding: 5px 10px; font-size: 11px; color: #e8e9eb; font-family: 'DM Mono', monospace; outline: none; transition: border-color .15s; }
+.urlInput:focus { border-color: #4a9eff; }
+.urlBtn { font-size: 11px; font-weight: 500; padding: 5px 10px; border-radius: 5px; cursor: pointer; border: 1px solid #4a9eff; background: #1a2744; color: #4a9eff; font-family: 'DM Sans', sans-serif; white-space: nowrap; transition: all .15s; }
+.urlBtn:hover { background: #1e2f52; }
+
+/* SOURCE BADGES */
+.sourceBadge { font-size: 9px; background: #1a2420; color: #34d399; border: 1px solid #2d4030; padding: 1px 5px; border-radius: 3px; margin-left: 6px; font-weight: 500; }
+.sourceBadgeWarn { font-size: 9px; background: #1e1520; color: #f87171; border: 1px solid #2d1520; padding: 1px 5px; border-radius: 3px; margin-left: 6px; font-weight: 500; }
