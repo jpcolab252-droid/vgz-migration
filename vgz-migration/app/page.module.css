@@ -1,0 +1,125 @@
+.app { min-height: 100vh; }
+
+.topbar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 20px; border-bottom: 1px solid #1e2230; background: #0f1117;
+  position: sticky; top: 0; z-index: 10;
+}
+
+.logo { font-size: 13px; font-weight: 600; color: #4a9eff; letter-spacing: .04em; }
+.logo span { color: #6b7280; font-weight: 400; }
+
+.stats { display: flex; gap: 16px; }
+.stat { font-size: 12px; color: #6b7280; }
+.stat strong { color: #e8e9eb; font-family: 'DM Mono', monospace; }
+
+.filters {
+  display: flex; gap: 6px; padding: 12px 20px;
+  border-bottom: 1px solid #1e2230; background: #0f1117;
+  position: sticky; top: 53px; z-index: 9;
+}
+
+.filterBtn {
+  padding: 5px 12px; border-radius: 6px; font-size: 12px; font-weight: 500;
+  cursor: pointer; border: 1px solid #1e2230; background: #161b27;
+  color: #6b7280; transition: all .15s; font-family: 'DM Sans', sans-serif;
+}
+.filterBtn:hover { border-color: #2d3748; color: #9ca3af; }
+.filterBtn.active { background: #1a2744; border-color: #4a9eff; color: #4a9eff; }
+
+.list { padding: 12px 20px; display: flex; flex-direction: column; gap: 8px; }
+
+.card {
+  background: #161b27; border: 1px solid #1e2230; border-radius: 10px;
+  overflow: hidden; transition: border-color .15s;
+}
+.card:hover { border-color: #2d3748; }
+.card.expanded { border-color: #2d3748; }
+
+.cardHeader {
+  display: flex; align-items: center; gap: 10px;
+  padding: 12px 14px; cursor: pointer;
+}
+
+.templateBadge {
+  font-size: 10px; font-weight: 600; padding: 2px 7px;
+  border-radius: 4px; letter-spacing: .05em; flex-shrink: 0;
+}
+.badgeThema   { background: #1a2744; color: #4a9eff; }
+.badgeArtikel { background: #1a2532; color: #a78bfa; }
+.badgeService { background: #1a2420; color: #34d399; }
+
+.cardTitle {
+  font-size: 13px; font-weight: 500; flex: 1;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+.aiBadge {
+  display: flex; align-items: center; gap: 4px;
+  font-size: 11px; font-weight: 500; padding: 3px 8px;
+  border-radius: 5px; flex-shrink: 0;
+}
+.aiBehouden  { background: #1a2420; color: #34d399; }
+.aiAanpassen { background: #1e1f00; color: #fbbf24; }
+.aiWeggooien { background: #1f1520; color: #f87171; }
+.aiLoading   { background: #161b27; color: #6b7280; }
+
+.decBadge { font-size: 11px; padding: 2px 8px; border-radius: 5px; flex-shrink: 0; }
+.decApproved { background: #1a2420; color: #34d399; }
+.decRejected { background: #1f1520; color: #f87171; }
+.decEdit     { background: #1e1f00; color: #fbbf24; }
+
+.cardBody {
+  padding: 12px 14px 14px;
+  display: flex; flex-direction: column; gap: 10px;
+  border-top: 1px solid #1e2230;
+}
+
+.fieldRow { display: grid; grid-template-columns: 90px 1fr; gap: 8px; font-size: 12px; }
+.fieldLabel { color: #6b7280; font-weight: 500; }
+.fieldValue { color: #c9cdd6; font-family: 'DM Mono', monospace; font-size: 11px; word-break: break-all; }
+
+.bodyPreview {
+  background: #0f1117; border: 1px solid #1e2230; border-radius: 6px;
+  padding: 8px 10px; font-size: 11px; color: #9ca3af;
+  font-family: 'DM Mono', monospace; max-height: 80px; overflow: hidden;
+  position: relative; white-space: pre-wrap; word-break: break-word;
+}
+.bodyPreview::after {
+  content: ''; position: absolute; bottom: 0; left: 0; right: 0; height: 24px;
+  background: linear-gradient(transparent, #0f1117);
+}
+
+.issues { display: flex; flex-wrap: wrap; gap: 5px; }
+.issueChip {
+  font-size: 10px; padding: 2px 7px; border-radius: 4px;
+  background: #1e1520; color: #f87171; border: 1px solid #2d1520;
+}
+
+.aiSection {
+  background: #0f1117; border: 1px solid #1e2230; border-radius: 8px; padding: 10px 12px;
+}
+.aiSectionHeader { font-size: 11px; font-weight: 600; color: #4a9eff; margin-bottom: 8px; }
+
+.aiBullets { display: flex; flex-direction: column; gap: 4px; }
+.aiBullet { font-size: 12px; color: #9ca3af; display: flex; gap: 6px; }
+.aiBullet::before { content: '→'; color: #4a9eff; flex-shrink: 0; }
+
+.actions { display: flex; gap: 6px; margin-top: 4px; flex-wrap: wrap; }
+
+.btn {
+  padding: 6px 14px; border-radius: 6px; font-size: 12px; font-weight: 500;
+  cursor: pointer; border: 1px solid; transition: all .15s;
+  font-family: 'DM Sans', sans-serif;
+}
+.btnApprove  { background: #1a2420; border-color: #34d399; color: #34d399; }
+.btnApprove:hover { background: #22342e; }
+.btnEdit     { background: #1e1f00; border-color: #fbbf24; color: #fbbf24; }
+.btnEdit:hover { background: #282500; }
+.btnReject   { background: #1f1520; border-color: #f87171; color: #f87171; }
+.btnReject:hover { background: #2a1520; }
+.btnAnalyze  { background: #1a2744; border-color: #4a9eff; color: #4a9eff; }
+.btnAnalyze:hover { background: #1e2f52; }
+
+.loadingState { padding: 40px; text-align: center; color: #6b7280; font-size: 13px; }
+.empty        { padding: 40px; text-align: center; color: #6b7280; font-size: 13px; }
