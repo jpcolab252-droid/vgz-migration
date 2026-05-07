@@ -12,179 +12,58 @@ type SitecoreItem = {
 }
 
 type Analysis = {
-  advies: 'behouden' | 'aanpassen' | 'weggooien'
-  reden: string
-  acties: string[]
+  contentType: string
+  titel: string
+  slug: string
+  thema: string
+  samenvatting: string
+  notitie: string
 }
 
-type Decision = 'approved' | 'edit' | 'rejected' | null
+type Status = 'pending' | 'ai' | 'done'
+
+const THEMES = ['Bewegen', 'Voeding', 'Mentale gezondheid']
+const TYPES = ['Artikel', 'Service', 'Thema']
+
+function scPath(item: SitecoreItem): string {
+  const url = String(item.fields.Url || '')
+  const parts = url.split('/').filter(Boolean)
+  return '/sitecore/content/VGZ/' + parts
+    .map(p => p.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' '))
+    .join('/')
+}
 
 function detectIssues(item: SitecoreItem): string[] {
   const issues: string[] = []
   const body = String(item.fields.Body || '')
-  if (/0900-\d{4}/.test(body)) issues.push('hardcoded telefoonnummer')
-  if (/style=/.test(body)) issues.push('inline CSS')
-  if (body.includes('Bewegen is goed voor je gezondheid. Of u nu wandelt')) issues.push('duplicate boilerplate')
-  if (!item.fields.Summary && !item.fields.Intro && !item.fields.MetaDescription) issues.push('samenvatting ontbreekt')
-  if (item.template === 'Artikel' && !item.fields.Author) issues.push('auteur ontbreekt')
-  if (item.template === 'Artikel' && !item.fields.Summary) issues.push('samenvatting ontbreekt')
-  if (item.template === 'Service' && !item.fields.Summary) issues.push('samenvatting ontbreekt')
+  if (/0900-\d{4}/.test(body)) issues.push('Hardcoded telefoonnummer in Page Body')
+  if (/style=/.test(body)) issues.push('Inline CSS in Page Body')
+  if (body.includes('Bewegen is goed voor je gezondheid. Of u nu wandelt')) issues.push('Duplicate boilerplate tekst')
+  if (!item.fields.Summary && !item.fields.MetaDescription) issues.push('Meta Description ontbreekt')
+  if (item.template === 'Artikel' && !item.fields.Author) issues.push('Author veld leeg')
   const lm = String(item.fields.LastModified || '')
-  if (lm && parseInt(lm.substring(0, 4)) <= 2022) issues.push('verouderd (2022 of ouder)')
-  if (/<div|<h[2-6]/.test(body)) issues.push('structurele HTML in body')
+  if (lm && parseInt(lm.substring(0, 4)) <= 2022) issues.push('Niet bijgewerkt sinds 2022')
   return [...new Set(issues)]
 }
 
-function TemplateBadge({ template }: { template: string }) {
-  const cls = template === 'Thema' ? styles.badgeThema
-    : template === 'Artikel' ? styles.badgeArtikel
-    : styles.badgeService
-  return <span className={`${styles.templateBadge} ${cls}`}>{template.toUpperCase()}</span>
-}
-
-function AiBadge({ analysis, analyzing, issues, onAnalyze }: {
-  analysis: Analysis | null, analyzing: boolean, issues: string[], onAnalyze: () => void
-}) {
-  if (analyzing) return <span className={`${styles.aiBadge} ${styles.aiLoading}`}>analyseren...</span>
-  if (analysis) {
-    const icons = { behouden: '✓', aanpassen: '✎', weggooien: '✗' }
-    const cls = analysis.advies === 'behouden' ? styles.aiBehouden
-      : analysis.advies === 'aanpassen' ? styles.aiAanpassen
-      : styles.aiWeggooien
-    return <span className={`${styles.aiBadge} ${cls}`}>{icons[analysis.advies]} {analysis.advies}</span>
-  }
-  if (issues.length > 0) {
-    return (
-      <span
-        className={`${styles.aiBadge} ${styles.aiLoading}`}
-        style={{ cursor: 'pointer' }}
-        onClick={e => { e.stopPropagation(); onAnalyze() }}
-      >
-        ⚡ analyseer
-      </span>
-    )
-  }
-  return null
-}
-
-function Card({
-  item, analysis, analyzing, decision, expanded,
-  onToggle, onAnalyze, onDecide
-}: {
-  item: SitecoreItem
-  analysis: Analysis | null
-  analyzing: boolean
-  decision: Decision
-  expanded: boolean
-  onToggle: () => void
-  onAnalyze: () => void
-  onDecide: (d: Decision) => void
-}) {
-  const issues = detectIssues(item)
-  const name = String(item.fields.Title || item.fields.Name || '')
-  const body = String(item.fields.Body || '')
-
-  return (
-    <div className={`${styles.card} ${expanded ? styles.expanded : ''}`}>
-      <div className={styles.cardHeader} onClick={onToggle}>
-        <TemplateBadge template={item.template} />
-        <span className={styles.cardTitle}>{name}</span>
-        {issues.length > 0 && (
-          <span style={{ fontSize: 11, color: '#f87171', flexShrink: 0 }}>{issues.length} ⚠</span>
-        )}
-        <AiBadge analysis={analysis} analyzing={analyzing} issues={issues} onAnalyze={onAnalyze} />
-        {decision === 'approved' && <span className={`${styles.decBadge} ${styles.decApproved}`}>✓ behouden</span>}
-        {decision === 'rejected' && <span className={`${styles.decBadge} ${styles.decRejected}`}>✗ weggegooid</span>}
-        {decision === 'edit' && <span className={`${styles.decBadge} ${styles.decEdit}`}>✎ bewerken</span>}
-        <span style={{ color: '#6b7280', fontSize: 13, flexShrink: 0 }}>{expanded ? '▲' : '▼'}</span>
-      </div>
-
-      {expanded && (
-        <div className={styles.cardBody}>
-          <div className={styles.fieldRow}>
-            <span className={styles.fieldLabel}>URL</span>
-            <span className={styles.fieldValue}>{String(item.fields.Url || '-')}</span>
-          </div>
-          <div className={styles.fieldRow}>
-            <span className={styles.fieldLabel}>Gewijzigd</span>
-            <span className={styles.fieldValue}>{String(item.fields.LastModified || '-')}</span>
-          </div>
-          {(item.fields.Summary || item.fields.MetaDescription) && (
-            <div className={styles.fieldRow}>
-              <span className={styles.fieldLabel}>Samenvatting</span>
-              <span className={styles.fieldValue} style={{ fontFamily: 'DM Sans', fontSize: 12, color: '#c9cdd6' }}>
-                {String(item.fields.Summary || item.fields.MetaDescription)}
-              </span>
-            </div>
-          )}
-          <div>
-            <div className={styles.fieldLabel} style={{ fontSize: 11, marginBottom: 5 }}>Body (raw Sitecore)</div>
-            <div className={styles.bodyPreview}>{body.substring(0, 500)}</div>
-          </div>
-          {issues.length > 0 && (
-            <div>
-              <div className={styles.fieldLabel} style={{ fontSize: 11, marginBottom: 5 }}>Gedetecteerde problemen</div>
-              <div className={styles.issues}>
-                {issues.map(i => <span key={i} className={styles.issueChip}>{i}</span>)}
-              </div>
-            </div>
-          )}
-          {analysis && (
-            <div className={styles.aiSection}>
-              <div className={styles.aiSectionHeader}>✦ AI-analyse</div>
-              <div style={{ fontSize: 12, color: '#c9cdd6', marginBottom: 8 }}>{analysis.reden}</div>
-              <div className={styles.aiBullets}>
-                {analysis.acties.map((a, i) => (
-                  <div key={i} className={styles.aiBullet}>{a}</div>
-                ))}
-              </div>
-            </div>
-          )}
-          <div className={styles.actions}>
-            {!analysis && !analyzing && (
-              <button className={`${styles.btn} ${styles.btnAnalyze}`} onClick={e => { e.stopPropagation(); onAnalyze() }}>
-                ✦ AI analyseren
-              </button>
-            )}
-            {decision !== 'approved' && (
-              <button className={`${styles.btn} ${styles.btnApprove}`} onClick={e => { e.stopPropagation(); onDecide('approved') }}>
-                ✓ Behouden
-              </button>
-            )}
-            {decision !== 'edit' && (
-              <button className={`${styles.btn} ${styles.btnEdit}`} onClick={e => { e.stopPropagation(); onDecide('edit') }}>
-                ✎ Bewerken
-              </button>
-            )}
-            {decision !== 'rejected' && (
-              <button className={`${styles.btn} ${styles.btnReject}`} onClick={e => { e.stopPropagation(); onDecide('rejected') }}>
-                ✗ Weggooien
-              </button>
-            )}
-            {decision && (
-              <button
-                className={styles.btn}
-                style={{ background: '#161b27', borderColor: '#2d3748', color: '#6b7280' }}
-                onClick={e => { e.stopPropagation(); onDecide(null) }}
-              >
-                ↩ Reset
-              </button>
-            )}
-          </div>
-        </div>
-      )}
-    </div>
-  )
+function groupItems(items: SitecoreItem[]) {
+  const g: Record<string, SitecoreItem[]> = { bewegen: [], voeding: [], 'mentale-gezondheid': [] }
+  items.forEach(item => {
+    const url = String(item.fields.Url || '')
+    if (url.includes('/bewegen')) g.bewegen.push(item)
+    else if (url.includes('/voeding')) g.voeding.push(item)
+    else if (url.includes('/mentale')) g['mentale-gezondheid'].push(item)
+  })
+  return g
 }
 
 export default function Page() {
   const [items, setItems] = useState<SitecoreItem[]>([])
-  const [loading, setLoading] = useState(true)
-  const [filter, setFilter] = useState('all')
-  const [analyses, setAnalyses] = useState<Record<string, Analysis>>({})
-  const [analyzing, setAnalyzing] = useState<Record<string, boolean>>({})
-  const [decisions, setDecisions] = useState<Record<string, Decision>>({})
-  const [expanded, setExpanded] = useState<Record<string, boolean>>({})
+  const [statuses, setStatuses] = useState<Record<string, Status>>({})
+  const [aiData, setAiData] = useState<Record<string, Analysis>>({})
+  const [currentId, setCurrentId] = useState<string | null>(null)
+  const [openFolders, setOpenFolders] = useState<Record<string, boolean>>({ bewegen: true, voeding: false, 'mentale-gezondheid': false })
+  const [thinking, setThinking] = useState(false)
 
   useEffect(() => {
     fetch(DB)
@@ -192,114 +71,256 @@ export default function Page() {
       .then(data => {
         const all: SitecoreItem[] = []
         ;['themas', 'artikelen', 'services'].forEach(type => {
-          Object.values(data[type] || {}).forEach((item) => all.push(item as SitecoreItem))
+          Object.values(data[type] || {}).forEach(item => all.push(item as SitecoreItem))
         })
         setItems(all)
-        setLoading(false)
-        setTimeout(() => {
-          all.forEach((item, i) => {
-            setTimeout(() => analyzeItem(item, all), i * 700)
-          })
-        }, 1000)
       })
   }, [])
 
-  const analyzeItem = useCallback(async (item: SitecoreItem, allItems?: SitecoreItem[]) => {
-    const list = allItems || items
-    const found = list.find(i => i.id === item.id)
-    if (!found) return
-    setAnalyzing(prev => ({ ...prev, [item.id]: true }))
-    const issues = detectIssues(item)
+  const current = items.find(i => i.id === currentId)
+  const grouped = groupItems(items)
+
+  const runAI = useCallback(async () => {
+    if (!current) return
+    setThinking(true)
+    const issues = detectIssues(current)
     try {
       const r = await fetch('/api/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ item, issues }),
+        body: JSON.stringify({ item: current, issues }),
       })
       const data = await r.json()
-      setAnalyses(prev => ({ ...prev, [item.id]: data }))
+      setAiData(prev => ({ ...prev, [current.id]: data }))
     } catch {
-      setAnalyses(prev => ({
+      const url = String(current.fields.Url || '')
+      setAiData(prev => ({
         ...prev,
-        [item.id]: {
-          advies: issues.length > 2 ? 'aanpassen' : 'behouden',
-          reden: issues.length ? `${issues.length} problemen gevonden.` : 'Content ziet er goed uit.',
-          acties: issues.slice(0, 2).map(i => `Fix: ${i}`),
+        [current.id]: {
+          contentType: current.template,
+          titel: String(current.fields.Title || current.fields.Name || ''),
+          slug: url.split('/').pop() || '',
+          thema: url.includes('bewegen') ? 'Bewegen' : url.includes('voeding') ? 'Voeding' : 'Mentale gezondheid',
+          samenvatting: String(current.fields.Summary || '').substring(0, 160),
+          notitie: issues.length ? `Let op: ${issues[0]}.` : 'Content is klaar voor migratie.',
         },
       }))
     }
-    setAnalyzing(prev => ({ ...prev, [item.id]: false }))
-  }, [items])
+    setStatuses(prev => ({ ...prev, [current.id]: 'ai' }))
+    setThinking(false)
+  }, [current])
 
-  const filtered = items.filter(item => {
-    if (filter === 'all') return true
-    if (filter === 'pending') return !decisions[item.id]
-    return item.template.toLowerCase() === filter
-  })
-
-  const approved = Object.values(decisions).filter(d => d === 'approved').length
-  const rejected = Object.values(decisions).filter(d => d === 'rejected').length
-  const pending = items.length - approved - rejected
-  const analyzed = Object.keys(analyses).length
-
-  if (loading) {
-    return (
-      <div className={styles.app}>
-        <div className={styles.topbar}>
-          <div className={styles.logo}>VGZ Migration <span>/ review interface</span></div>
-        </div>
-        <div className={styles.loadingState}>Firebase data ophalen...</div>
-      </div>
-    )
+  const submitItem = () => {
+    if (!currentId) return
+    setStatuses(prev => ({ ...prev, [currentId]: 'done' }))
+    const idx = items.findIndex(i => i.id === currentId)
+    if (idx < items.length - 1) setCurrentId(items[idx + 1].id)
   }
+
+  const skipItem = () => {
+    const idx = items.findIndex(i => i.id === currentId)
+    if (idx < items.length - 1) setCurrentId(items[idx + 1].id)
+  }
+
+  const ai = currentId ? aiData[currentId] : null
+  const af = (field: string) => ai?.[field as keyof Analysis] ? styles.aiFilled : ''
+  const at = (field: string) => ai?.[field as keyof Analysis] ? <span className={styles.aiTag}>AI</span> : null
+  const v = (field: string, fallback = '') => ai?.[field as keyof Analysis] || fallback
+
+  const folders = [
+    { key: 'bewegen', label: 'Bewegen' },
+    { key: 'voeding', label: 'Voeding' },
+    { key: 'mentale-gezondheid', label: 'Mentale gezondheid' },
+  ]
+
+  const tmplMap: Record<string, string> = {
+    Thema: 'Page (Standard Values)',
+    Artikel: 'Article Page',
+    Service: 'Service Page',
+  }
+
+  const typeIcon = (t: string) => t === 'Thema' ? '📋' : t === 'Service' ? '🔧' : '📄'
 
   return (
     <div className={styles.app}>
-      <div className={styles.topbar}>
-        <div className={styles.logo}>VGZ Migration <span>/ review interface</span></div>
-        <div className={styles.stats}>
-          <span className={styles.stat}><strong>{pending}</strong> te reviewen</span>
-          <span className={styles.stat}><strong>{approved}</strong> behouden</span>
-          <span className={styles.stat}><strong>{rejected}</strong> weggegooid</span>
-          <span className={styles.stat}><strong>{analyzed}/{items.length}</strong> geanalyseerd</span>
+
+      {/* LEFT: Sitecore tree */}
+      <div className={styles.scPanel}>
+        <div className={styles.scHeader}>
+          <span className={styles.scLogo}>SC</span>
+          <span className={styles.scHeaderLabel}>Content Editor</span>
+        </div>
+        <div className={styles.tree}>
+          <div className={`${styles.treeFolder} ${styles.treeRoot}`}>
+            <span>📁</span>
+            <span>sitecore/content/VGZ</span>
+          </div>
+          {folders.map(({ key, label }) => {
+            const folderItems = grouped[key] || []
+            const done = folderItems.filter(i => statuses[i.id] === 'done').length
+            const isOpen = openFolders[key]
+            return (
+              <div key={key} className={styles.treeSection}>
+                <div
+                  className={`${styles.treeFolder} ${isOpen ? styles.open : ''}`}
+                  onClick={() => setOpenFolders(prev => ({ ...prev, [key]: !prev[key] }))}
+                >
+                  <span>{isOpen ? '▾' : '▸'}</span>
+                  <span>📁</span>
+                  <span>{label}</span>
+                  <span className={styles.folderCount}>{done}/{folderItems.length}</span>
+                </div>
+                {isOpen && (
+                  <div className={styles.treeChildren}>
+                    {folderItems.map(item => {
+                      const st = statuses[item.id] || 'pending'
+                      const name = String(item.fields.Title || item.fields.Name || '')
+                      return (
+                        <div
+                          key={item.id}
+                          className={`${styles.treeItem} ${currentId === item.id ? styles.active : ''} ${st === 'done' ? styles.done : st === 'ai' ? styles.aiDone : ''}`}
+                          onClick={() => setCurrentId(item.id)}
+                        >
+                          <span className={`${styles.itemDot} ${st === 'done' ? styles.dotDone : st === 'ai' ? styles.dotAi : ''}`} />
+                          <span>{typeIcon(item.template)}</span>
+                          <span className={styles.itemName}>{name}</span>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            )
+          })}
         </div>
       </div>
 
-      <div className={styles.filters}>
-        {[
-          ['all', 'Alles', items.length],
-          ['thema', "Thema's", items.filter(i => i.template === 'Thema').length],
-          ['artikel', 'Artikelen', items.filter(i => i.template === 'Artikel').length],
-          ['service', 'Services', items.filter(i => i.template === 'Service').length],
-          ['pending', 'Te doen', items.filter(i => !decisions[i.id]).length],
-        ].map(([key, label, count]) => (
-          <button
-            key={key as string}
-            className={`${styles.filterBtn} ${filter === key ? styles.active : ''}`}
-            onClick={() => setFilter(key as string)}
-          >
-            {label} <span style={{ opacity: .5 }}>{count}</span>
-          </button>
-        ))}
+      {/* MIDDLE: Sitecore item */}
+      <div className={styles.midPanel}>
+        {!current ? (
+          <div className={styles.emptyState}>← Selecteer een item<br />in de Sitecore tree</div>
+        ) : (
+          <>
+            <div className={styles.panelHeader}>
+              <span className={`${styles.panelSource} ${styles.scSource}`}>SITECORE</span>
+              <span className={styles.panelPath} title={scPath(current)}>{scPath(current)}</span>
+            </div>
+            <div className={styles.panelBody}>
+              <div className={styles.scField}>
+                <div className={styles.scFieldLabel}>Template</div>
+                <div className={styles.scFieldValue}>{tmplMap[current.template] || current.template}</div>
+              </div>
+              <div className={styles.scField}>
+                <div className={styles.scFieldLabel}>Page Title</div>
+                <div className={styles.scFieldValue}>{String(current.fields.Title || current.fields.Name || '—')}</div>
+              </div>
+              {(current.fields.Summary || current.fields.MetaDescription) && (
+                <div className={styles.scField}>
+                  <div className={styles.scFieldLabel}>Meta Description</div>
+                  <div className={styles.scFieldValue}>{String(current.fields.Summary || current.fields.MetaDescription)}</div>
+                </div>
+              )}
+              <div className={styles.scField}>
+                <div className={styles.scFieldLabel}>Page Body</div>
+                <div className={`${styles.scFieldValue} ${styles.long}`}>
+                  {String(current.fields.Body || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().substring(0, 500)}
+                </div>
+              </div>
+              <div className={styles.scField}>
+                <div className={styles.scFieldLabel}>Updated</div>
+                <div className={styles.scFieldValue}>{String(current.fields.LastModified || '—')}</div>
+              </div>
+              {current.fields.Author && (
+                <div className={styles.scField}>
+                  <div className={styles.scFieldLabel}>Author</div>
+                  <div className={styles.scFieldValue}>{String(current.fields.Author)}</div>
+                </div>
+              )}
+              {detectIssues(current).length > 0 ? (
+                <div className={styles.issuesBox}>
+                  <div className={styles.issuesTitle}>⚠ Migration issues detected</div>
+                  {detectIssues(current).map(i => (
+                    <div key={i} className={styles.issueLine}>{i}</div>
+                  ))}
+                </div>
+              ) : (
+                <div className={styles.noIssues}>✓ No migration issues detected</div>
+              )}
+            </div>
+          </>
+        )}
       </div>
 
-      <div className={styles.list}>
-        {filtered.length === 0 ? (
-          <div className={styles.empty}>Geen items in deze categorie</div>
+      {/* BRIDGE */}
+      <div className={styles.bridge}>
+        <div className={styles.bridgeArrow}>→</div>
+        <button
+          className={styles.aiBridgeBtn}
+          disabled={!current || thinking}
+          onClick={runAI}
+        >
+          {thinking ? '...' : '✦ AI'}
+        </button>
+        <div className={styles.bridgeArrow}>→</div>
+      </div>
+
+      {/* RIGHT: Contentful form */}
+      <div className={styles.cfPanel}>
+        <div className={styles.panelHeader}>
+          <span className={`${styles.panelSource} ${styles.cfSource}`}>CONTENTFUL</span>
+          <span className={styles.panelPath}>{current ? String(current.fields.Title || current.fields.Name || '—') : '—'}</span>
+        </div>
+        {!current ? (
+          <div className={styles.emptyState}>AI vult dit formulier in<br />op basis van de Sitecore-content</div>
+        ) : thinking ? (
+          <div className={styles.emptyState}>
+            <span className={styles.thinking}>✦ AI analyseert Sitecore-content<br />en stelt veldmapping voor...</span>
+          </div>
         ) : (
-          filtered.map(item => (
-            <Card
-              key={item.id}
-              item={item}
-              analysis={analyses[item.id] || null}
-              analyzing={!!analyzing[item.id]}
-              decision={decisions[item.id] || null}
-              expanded={!!expanded[item.id]}
-              onToggle={() => setExpanded(prev => ({ ...prev, [item.id]: !prev[item.id] }))}
-              onAnalyze={() => analyzeItem(item)}
-              onDecide={d => setDecisions(prev => ({ ...prev, [item.id]: d }))}
-            />
-          ))
+          <>
+            <div className={styles.cfBody}>
+              <div className={styles.cfField}>
+                <div className={styles.cfLabel}>Content Type <span className={styles.req}>*</span> {at('contentType')}</div>
+                <select className={`${styles.cfSelect} ${af('contentType')}`}>
+                  {TYPES.map(t => <option key={t} selected={t === v('contentType', current.template)}>{t}</option>)}
+                </select>
+              </div>
+              <div className={styles.cfField}>
+                <div className={styles.cfLabel}>Title <span className={styles.req}>*</span> {at('titel')}</div>
+                <input className={`${styles.cfInput} ${af('titel')}`} defaultValue={v('titel', String(current.fields.Title || current.fields.Name || ''))} />
+              </div>
+              <div className={styles.cfField}>
+                <div className={styles.cfLabel}>Slug <span className={styles.req}>*</span> {at('slug')}</div>
+                <input className={`${styles.cfInput} ${af('slug')}`} defaultValue={v('slug', String(current.fields.Url || '').split('/').pop() || '')} />
+              </div>
+              <div className={styles.cfField}>
+                <div className={styles.cfLabel}>Thema {at('thema')}</div>
+                <select className={`${styles.cfSelect} ${af('thema')}`}>
+                  <option value="">— selecteer —</option>
+                  {THEMES.map(t => <option key={t} selected={t === v('thema')}>{t}</option>)}
+                </select>
+              </div>
+              <div className={styles.cfField}>
+                <div className={styles.cfLabel}>Summary {at('samenvatting')}</div>
+                <textarea className={`${styles.cfInput} ${styles.textarea} ${af('samenvatting')}`} defaultValue={v('samenvatting', String(current.fields.Summary || ''))} />
+              </div>
+              {ai?.notitie && (
+                <div className={styles.aiNote}>
+                  <div className={styles.aiNoteTitle}>✦ AI-notitie voor redacteur</div>
+                  {ai.notitie}
+                </div>
+              )}
+              {!ai && (
+                <div className={styles.emptyState} style={{ padding: '16px 0', fontSize: 11 }}>
+                  Klik ✦ AI om veldmapping voor te stellen
+                </div>
+              )}
+            </div>
+            <div className={styles.cfFooter}>
+              <button className={`${styles.btn} ${styles.btnSkip}`} onClick={skipItem}>Overslaan</button>
+              <button className={`${styles.btn} ${styles.btnSubmit}`} onClick={submitItem}>→ Doorzetten naar Contentful</button>
+            </div>
+          </>
         )}
       </div>
     </div>
